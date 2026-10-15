@@ -20,7 +20,7 @@ enum Tool: Int, CaseIterable, Codable, Identifiable {
         switch self {
         case .arrowNormal: "Arrow"
         case .arrowLine: "Line"
-        case .overlayRectangle: "Highlight Rectangle"
+        case .overlayRectangle: "Spotlight"
         case .overlayCircle: "Highlight Circle"
         case .shapeRectangle: "Rectangle"
         case .shapeCircle: "Ellipse"
@@ -35,7 +35,7 @@ enum Tool: Int, CaseIterable, Codable, Identifiable {
         switch self {
         case .arrowNormal: "arrow.up.right"
         case .arrowLine: "line.diagonal"
-        case .overlayRectangle: "rectangle.dashed"
+        case .overlayRectangle: "rectangle.inset.filled"
         case .overlayCircle: "circle.dashed"
         case .shapeRectangle: "rectangle"
         case .shapeCircle: "circle"
@@ -50,6 +50,7 @@ enum Tool: Int, CaseIterable, Codable, Identifiable {
     var graphicClass: Graphic.Type? {
         switch self {
         case .arrowNormal: ArrowNormal.self
+        case .overlayRectangle: OverlayRectangle.self
         case .shapeRectangle: ShapeRectangle.self
         case .shapeCircle: ShapeCircle.self
         case .text: TextBox.self
@@ -58,4 +59,8 @@ enum Tool: Int, CaseIterable, Codable, Identifiable {
     }
 
     var isAvailable: Bool { graphicClass != nil }
+
+    /// Palette order (not tool-id order): arrow, the box tools, then text.
+    static let paletteOrder: [Tool] = [.arrowNormal, .shapeRectangle, .shapeCircle, .overlayRectangle, .text,
+                                       .arrowLine, .overlayCircle, .pen, .pixelate, .crop]
 }

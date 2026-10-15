@@ -12,7 +12,7 @@ struct ToolPaletteView: View {
     var body: some View {
         HStack(spacing: 12) {
             HStack(spacing: 2) {
-                ForEach(Tool.allCases.filter(\.isAvailable)) { tool in
+                ForEach(Tool.paletteOrder.filter(\.isAvailable)) { tool in
                     Button {
                         settings.tool = tool
                     } label: {

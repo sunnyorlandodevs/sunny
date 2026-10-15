@@ -175,6 +175,7 @@ enum SelfTest {
             check(false, "clipboard document exists")
         }
         runMVPTools(doc, wc, step: step, check: check)
+        runSpotlight(doc, wc, step: step, check: check)
         runCopyAndClose(doc, check: check)
         canvas.selection = []
         snapshot(canvas.canvasView, to: outDir.appendingPathComponent("3-final-canvas.png"))
@@ -268,8 +269,8 @@ enum SelfTest {
         check(doc.graphics.count == count, "empty text box is discarded")
     }
 
-    /// ⇧⌘C on a second document: clipboard gets the PNG, window closes, no save prompt.
-    /// The user's clipboard is put back afterwards.
+    /// ⇧⌘C on a second document: clipboard gets the PNG, a toast shows, the window
+    /// stays open; then closing it never prompts. The user's clipboard is put back.
     private static func runCopyAndClose(_ doc: Document, check: (Bool, String) -> Void) {
         let pasteboard = NSPasteboard.general
         let savedItems = (pasteboard.pasteboardItems ?? []).map { item -> NSPasteboardItem in
@@ -282,18 +283,53 @@ enum SelfTest {
             pasteboard.writeObjects(savedItems)
         }
 
-        Document.openUntitled(with: doc.image!, name: "CopyClose test")
+        Document.openUntitled(with: doc.image!, name: "Copy test")
         guard let other = NSDocumentController.shared.documents
-            .first(where: { $0.displayName == "CopyClose test" }) as? Document else {
-            check(false, "copy & close: document opened")
+            .first(where: { $0.displayName == "Copy test" }) as? Document,
+              let window = other.windowControllers.first?.window else {
+            check(false, "copy: document opened")
             return
         }
-        other.updateChangeCount(.changeDone)  // edited, so a normal close would prompt
-        other.copyImageAndClose(nil)
+        other.updateChangeCount(.changeDone)
+        other.copyImage(nil)
         let png = pasteboard.data(forType: .png)
         check(png.flatMap(NSBitmapImageRep.init(data:))?.pixelsWide == NSBitmapImageRep(data: doc.renderedPNG()!)?.pixelsWide,
               "⇧⌘C puts a full-size PNG on the clipboard")
-        check(!NSDocumentController.shared.documents.contains { $0 === other }, "⇧⌘C closes the document without a save prompt")
+        check(NSDocumentController.shared.documents.contains { $0 === other }, "⇧⌘C leaves the window open")
+        check(window.contentView?.subviews.contains { $0 is NSVisualEffectView } ?? false, "⇧⌘C shows the toast")
+
+        check(!other.isDocumentEdited, "edited document still reports no unsaved changes")
+        window.performClose(nil)
+        check(!NSDocumentController.shared.documents.contains { $0 === other } && !window.isVisible,
+              "closing an edited window doesn't prompt")
+    }
+
+    /// Spotlight: outside darkened by ~33%, inside untouched.
+    private static func runSpotlight(_ doc: Document, _ wc: DocumentWindowController,
+                                     step: (() -> Void) -> Void, check: (Bool, String) -> Void) {
+        let canvas = wc.canvasController
+        func pixel(_ png: Data, _ p: CGPoint) -> CGFloat {
+            let rep = NSBitmapImageRep(data: png)!
+            let scale = CGFloat(rep.pixelsWide) / doc.canvasSize.width
+            let c = rep.colorAt(x: Int(p.x * scale), y: Int(p.y * scale))!.usingColorSpace(.sRGB)!
+            return (c.redComponent + c.greenComponent + c.blueComponent) / 3
+        }
+        let outside = CGPoint(x: 860, y: 40), inside = CGPoint(x: 800, y: 120)
+        let before = doc.renderedPNG()!
+        wc.settings.tool = .overlayRectangle
+        step {
+            canvas.mouseDown(at: CGPoint(x: 760, y: 80), extendingSelection: false)
+            canvas.mouseDragged(to: CGPoint(x: 880, y: 170))
+            canvas.mouseUp(at: CGPoint(x: 880, y: 170))
+        }
+        check(doc.graphics.contains { $0 is OverlayRectangle }, "drag creates a spotlight")
+        let after = doc.renderedPNG()!
+        let ratio = pixel(after, outside) / pixel(before, outside)
+        // 33% black over the image; color-space conversion moves the measured ratio a bit.
+        check(ratio > 0.6 && ratio < 0.8, "outside the spotlight is darkened (ratio \(ratio))")
+        check(abs(pixel(after, inside) - pixel(before, inside)) < 0.01, "inside the spotlight is untouched")
+        check(doc.graphics.firstIndex { $0 is OverlayRectangle }! < doc.graphics.firstIndex { $0 is ArrowNormal }!,
+              "spotlight sits below arrows/shapes/text")
     }
 
     private static func snapshot(_ view: NSView, to url: URL) {

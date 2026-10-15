@@ -26,6 +26,10 @@ final class Document: NSDocument {
     // Saving writes a flattened PNG. No autosave: an autosave would flatten the
     // annotations into a file nobody asked for.
     nonisolated override class var autosavesInPlace: Bool { false }
+
+    /// Annotations are throwaway unless saved or copied: closing a window (or quitting)
+    /// never asks about unsaved changes.
+    nonisolated override var isDocumentEdited: Bool { false }
     nonisolated override class var readableTypes: [String] { [UTType.image.identifier] }
     nonisolated override class var writableTypes: [String] { [pngTypeID] }
     nonisolated override class func isNativeType(_ type: String) -> Bool { type == pngTypeID }
@@ -133,7 +137,8 @@ final class Document: NSDocument {
     // MARK: Rendering & export
 
     /// Draws the image and graphics into a flipped context sized to `canvasSize`.
-    func drawCanvas(in context: CGContext) {
+    /// `pending` are graphics still being drawn or typed (not in the document yet).
+    func drawCanvas(in context: CGContext, pending: [Graphic] = []) {
         let bounds = CGRect(origin: .zero, size: canvasSize)
         if let image {
             NSGraphicsContext.saveGraphicsState()
@@ -145,8 +150,14 @@ final class Document: NSDocument {
             context.setFillColor(NSColor.white.cgColor)
             context.fill(bounds)
         }
+        let all = graphics + pending
+        OverlayRectangle.drawDimming(for: all.compactMap { $0 as? OverlayRectangle },
+                                     canvas: bounds, in: context)
         for graphic in graphics {
             graphic.drawContents(in: context, isBeingCreated: false)
+        }
+        for graphic in pending {
+            graphic.drawContents(in: context, isBeingCreated: true)
         }
     }
 
@@ -168,8 +179,9 @@ final class Document: NSDocument {
         return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
     }
 
-    /// ⇧⌘C: put the annotated image on the clipboard and close without asking to save.
-    @IBAction func copyImageAndClose(_ sender: Any?) {
+    /// ⇧⌘C: put the annotated image on the clipboard and confirm with a toast.
+    /// The window stays open for more edits.
+    @IBAction func copyImage(_ sender: Any?) {
         commitPendingEdits?()
         guard let png = renderedPNG() else {
             NSSound.beep()
@@ -181,7 +193,7 @@ final class Document: NSDocument {
         if let tiff = NSBitmapImageRep(data: png)?.tiffRepresentation {
             pasteboard.setData(tiff, forType: .tiff)  // for apps that only read TIFF
         }
-        close()
+        (windowControllers.first as? DocumentWindowController)?.showToast("Copied to Clipboard")
     }
 
     // MARK: Image helpers

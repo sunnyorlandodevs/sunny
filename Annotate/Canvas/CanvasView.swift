@@ -15,12 +15,12 @@ final class CanvasView: NSView {
 
         context.saveGState()
         context.clip(to: dirtyRect)
-        document.drawCanvas(in: context)
-        controller.creatingGraphic?.drawContents(in: context, isBeingCreated: true)
+        var pending: [Graphic] = controller.creatingGraphic.map { [$0] } ?? []
         // A brand-new text box isn't in the document until typing finishes.
         if let text = controller.editingText, !document.graphics.contains(where: { $0 === text }) {
-            text.drawContents(in: context, isBeingCreated: true)
+            pending.append(text)
         }
+        document.drawCanvas(in: context, pending: pending)
         for graphic in controller.selection {
             graphic.drawHandles(in: context)
         }

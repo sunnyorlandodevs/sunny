@@ -79,7 +79,7 @@ enum MainMenu {
         menu.addItem(item("Cut", #selector(NSText.cut(_:)), "x"))
         menu.addItem(item("Copy", #selector(NSText.copy(_:)), "c"))
         menu.addItem(item("Paste", #selector(NSText.paste(_:)), "v"))
-        menu.addItem(item("Copy Image & Close", #selector(Document.copyImageAndClose(_:)), "c", [.command, .shift]))
+        menu.addItem(item("Copy Image", #selector(Document.copyImage(_:)), "c", [.command, .shift]))
         menu.addItem(.separator())
         menu.addItem(item("Delete", #selector(CanvasViewController.delete(_:))))
         menu.addItem(item("Select All", #selector(CanvasViewController.selectAll(_:)), "a"))
