@@ -50,9 +50,14 @@ class Graphic {
 
     func isContentsUnderPoint(_ point: CGPoint) -> Bool { false }
 
+    /// Where the handles are drawn and grabbed. Usually the stored geometry itself;
+    /// text derives them from its laid-out box.
+    var handlePoints: [CGPoint] { handles }
+
     func handle(under point: CGPoint) -> Int? {
-        for index in 0..<Self.numberOfHandles where !Self.hiddenHandles.contains(index) {
-            if Graphic.handleRect(at: handles[index]).contains(point) { return index }
+        let points = handlePoints
+        for index in points.indices where !Self.hiddenHandles.contains(index) {
+            if Graphic.handleRect(at: points[index]).contains(point) { return index }
         }
         return nil
     }
@@ -77,8 +82,9 @@ class Graphic {
     }
 
     func drawHandles(in context: CGContext) {
-        for index in 0..<Self.numberOfHandles where !Self.hiddenHandles.contains(index) {
-            Graphic.drawHandle(at: handles[index], in: context)
+        let points = handlePoints
+        for index in points.indices where !Self.hiddenHandles.contains(index) {
+            Graphic.drawHandle(at: points[index], in: context)
         }
     }
 
@@ -116,13 +122,17 @@ class Graphic {
         var size: Int
         var hasShadow: Bool
         var handles: [CGPoint]
+        /// Text boxes only: the string and the wrap width (nil = grows to fit).
+        var text: String?
+        var textWidth: CGFloat?
     }
 
     var record: Record {
         Record(tool: Self.tool, color: CodableColor(color), size: size,
-               hasShadow: hasShadow, handles: handles)
+               hasShadow: hasShadow, handles: handles, text: nil, textWidth: nil)
     }
 
+    /// Subclasses with extra state override both `record` and `apply(_:)`.
     func apply(_ record: Record) {
         color = record.color.nsColor
         size = record.size

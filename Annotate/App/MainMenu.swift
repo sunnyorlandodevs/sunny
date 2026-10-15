@@ -55,7 +55,6 @@ enum MainMenu {
 
     private static func fileMenu() -> NSMenu {
         let menu = NSMenu(title: "File")
-        menu.addItem(item("New", #selector(NSDocumentController.newDocument(_:)), "n"))
         menu.addItem(item("Open…", #selector(NSDocumentController.openDocument(_:)), "o"))
         menu.addItem(.separator())
         menu.addItem(captureItem("Capture Region", GlobalHotKeys.captureRegion))
@@ -68,10 +67,7 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Close", #selector(NSWindow.performClose(_:)), "w"))
         menu.addItem(item("Save…", #selector(NSDocument.save(_:)), "s"))
-        menu.addItem(item("Duplicate", #selector(NSDocument.duplicate(_:)), "s", [.command, .shift]))
-        menu.addItem(item("Revert To…", #selector(NSDocument.revertToSaved(_:))))
-        menu.addItem(.separator())
-        menu.addItem(item("Export PNG…", #selector(Document.exportPNG(_:)), "e", [.command, .shift]))
+        menu.addItem(item("Save As…", #selector(NSDocument.saveAs(_:)), "s", [.command, .shift]))
         return menu
     }
 
@@ -79,6 +75,11 @@ enum MainMenu {
         let menu = NSMenu(title: "Edit")
         menu.addItem(item("Undo", Selector(("undo:")), "z"))
         menu.addItem(item("Redo", Selector(("redo:")), "z", [.command, .shift]))
+        menu.addItem(.separator())
+        menu.addItem(item("Cut", #selector(NSText.cut(_:)), "x"))
+        menu.addItem(item("Copy", #selector(NSText.copy(_:)), "c"))
+        menu.addItem(item("Paste", #selector(NSText.paste(_:)), "v"))
+        menu.addItem(item("Copy Image & Close", #selector(Document.copyImageAndClose(_:)), "c", [.command, .shift]))
         menu.addItem(.separator())
         menu.addItem(item("Delete", #selector(CanvasViewController.delete(_:))))
         menu.addItem(item("Select All", #selector(CanvasViewController.selectAll(_:)), "a"))

@@ -50,6 +50,15 @@ enum SelfTest {
         }
         func rect(_ g: Graphic) -> CGRect { (g as! Shape).rect }
 
+        // Settings persist to the real defaults; put the user's back when done.
+        let saved = (wc.settings.tool, wc.settings.color, wc.settings.size, wc.settings.hasShadow)
+        defer {
+            canvas.selection = []
+            (wc.settings.tool, wc.settings.color, wc.settings.size, wc.settings.hasShadow) = saved
+        }
+        wc.settings.size = 1
+        wc.settings.color = Graphic.defaultColor
+        wc.settings.hasShadow = true
         wc.settings.tool = .shapeRectangle
 
         // Draw a rectangle.
@@ -127,16 +136,14 @@ enum SelfTest {
         step { wc.settings.size = 2 }
         check(g.strokeWidth == 8, "size L → 8pt stroke")
 
-        // Save / reopen round trip.
+        // Save writes a flattened PNG at full pixel size.
         do {
-            let data = try doc.data(ofType: Document.nativeType)
-            let reopened = Document()
-            try reopened.read(from: data, ofType: Document.nativeType)
-            check(reopened.graphics.map(\.record) == doc.graphics.map(\.record), "save/reopen round-trips graphics")
-            check(reopened.image != nil, "save/reopen keeps image")
-            try data.write(to: outDir.appendingPathComponent("roundtrip.annot"))
+            let data = try doc.data(ofType: Document.pngTypeID)
+            let rep = NSBitmapImageRep(data: data)
+            check(rep != nil && data.starts(with: [0x89, 0x50, 0x4E, 0x47]), "Save writes PNG data")
+            check(rep?.pixelsWide == doc.image?.representations.map(\.pixelsWide).max(), "saved PNG is full pixel size")
         } catch {
-            check(false, "save round trip threw \(error)")
+            check(false, "save threw \(error)")
         }
 
         // Export PNG and sample a stroke pixel.
@@ -167,9 +174,126 @@ enum SelfTest {
         } else {
             check(false, "clipboard document exists")
         }
+        runMVPTools(doc, wc, step: step, check: check)
+        runCopyAndClose(doc, check: check)
+        canvas.selection = []
         snapshot(canvas.canvasView, to: outDir.appendingPathComponent("3-final-canvas.png"))
         snapshot(wc.window!.contentView!, to: outDir.appendingPathComponent("4-window.png"))
         return failures
+    }
+
+    /// Arrow, ellipse and text, driven through the same controller entry points.
+    private static func runMVPTools(_ doc: Document, _ wc: DocumentWindowController,
+                                    step: (() -> Void) -> Void, check: (Bool, String) -> Void) {
+        let canvas = wc.canvasController
+        let undo = doc.undoManager!
+
+        // Arrow: tip where the drag starts, tail where it ends.
+        wc.settings.tool = .arrowNormal
+        let countBefore = doc.graphics.count
+        step {
+            canvas.mouseDown(at: CGPoint(x: 600, y: 120), extendingSelection: false)
+            canvas.mouseDragged(to: CGPoint(x: 700, y: 220))
+            canvas.mouseUp(at: CGPoint(x: 700, y: 220))
+        }
+        let arrow = doc.graphics.last as? ArrowNormal
+        check(arrow != nil && doc.graphics.count == countBefore + 1, "drag creates an arrow")
+        if let arrow {
+            check(arrow.tip == CGPoint(x: 600, y: 120) && arrow.tail == CGPoint(x: 700, y: 220),
+                  "arrow tip at drag start, tail at drag end")
+            check(arrow.isContentsUnderPoint(CGPoint(x: 650, y: 170)), "arrow shaft is clickable")
+            check(arrow.isContentsUnderPoint(CGPoint(x: 605, y: 127)), "arrow head is clickable")
+        }
+        // Tiny drag → discarded.
+        step {
+            canvas.mouseDown(at: CGPoint(x: 800, y: 500), extendingSelection: false)
+            canvas.mouseDragged(to: CGPoint(x: 803, y: 503))
+            canvas.mouseUp(at: CGPoint(x: 803, y: 503))
+        }
+        check(doc.graphics.count == countBefore + 1, "arrow shorter than 7pt is discarded")
+
+        // Ellipse.
+        wc.settings.tool = .shapeCircle
+        step {
+            canvas.mouseDown(at: CGPoint(x: 450, y: 350), extendingSelection: false)
+            canvas.mouseDragged(to: CGPoint(x: 600, y: 450))
+            canvas.mouseUp(at: CGPoint(x: 600, y: 450))
+        }
+        let ellipse = doc.graphics.first { $0 is ShapeCircle } as? ShapeCircle
+        check(ellipse?.rect == CGRect(x: 450, y: 350, width: 150, height: 100), "drag creates an ellipse")
+        check(ellipse.map { $0.isContentsUnderPoint(CGPoint(x: 450, y: 400)) && !$0.isContentsUnderPoint(CGPoint(x: 525, y: 400)) } ?? false,
+              "ellipse hit-tests on its outline only")
+
+        // Text: click, type, finish.
+        wc.settings.tool = .text
+        canvas.mouseDown(at: CGPoint(x: 120, y: 420), extendingSelection: false)
+        canvas.mouseUp(at: CGPoint(x: 120, y: 420))
+        let textView = wc.window?.firstResponder as? NSTextView
+        check(textView != nil && canvas.editingText != nil, "text tool click starts typing")
+        textView?.insertText("Hello there", replacementRange: NSRange(location: NSNotFound, length: 0))
+        check(canvas.editingText?.string == "Hello there", "typed text reaches the text box")
+        step { canvas.endEditing() }
+        let box = doc.graphics.first { $0 is TextBox } as? TextBox
+        check(box?.string == "Hello there", "finished text box is added to the document")
+        check(undo.undoActionName == "Add Text", "undo menu says '\(undo.undoActionName)'")
+        if let box {
+            check(box.bounds.width > 100 && box.bounds.height > 25, "text box sizes to content (\(box.bounds))")
+            undo.undo()
+            check(!doc.graphics.contains { $0 === box }, "undo removes the text box")
+            undo.redo()
+            check(doc.graphics.contains { $0 === box }, "redo restores it")
+
+            // Double-click to edit; typing replaces the selected-all text.
+            let center = CGPoint(x: box.bounds.midX, y: box.bounds.midY)
+            canvas.mouseDown(at: center, extendingSelection: false, clickCount: 1)
+            canvas.mouseUp(at: center)
+            canvas.mouseDown(at: center, extendingSelection: false, clickCount: 2)
+            (wc.window?.firstResponder as? NSTextView)?.insertText("Edited", replacementRange: NSRange(location: NSNotFound, length: 0))
+            step { canvas.endEditing() }
+            check(box.string == "Edited", "double-click edits the text")
+            undo.undo()
+            check(box.string == "Hello there", "undo reverts the edit")
+
+            // Color change restyles a selected text box.
+            canvas.selection = [box]
+            step { wc.settings.color = .systemRed }
+            check(CodableColor(box.color) == CodableColor(.systemRed), "color change applies to text")
+        }
+
+        // Empty text box is dropped.
+        let count = doc.graphics.count
+        canvas.mouseDown(at: CGPoint(x: 700, y: 520), extendingSelection: false)
+        canvas.mouseUp(at: CGPoint(x: 700, y: 520))
+        step { canvas.endEditing() }
+        check(doc.graphics.count == count, "empty text box is discarded")
+    }
+
+    /// ⇧⌘C on a second document: clipboard gets the PNG, window closes, no save prompt.
+    /// The user's clipboard is put back afterwards.
+    private static func runCopyAndClose(_ doc: Document, check: (Bool, String) -> Void) {
+        let pasteboard = NSPasteboard.general
+        let savedItems = (pasteboard.pasteboardItems ?? []).map { item -> NSPasteboardItem in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        }
+        defer {
+            pasteboard.clearContents()
+            pasteboard.writeObjects(savedItems)
+        }
+
+        Document.openUntitled(with: doc.image!, name: "CopyClose test")
+        guard let other = NSDocumentController.shared.documents
+            .first(where: { $0.displayName == "CopyClose test" }) as? Document else {
+            check(false, "copy & close: document opened")
+            return
+        }
+        other.updateChangeCount(.changeDone)  // edited, so a normal close would prompt
+        other.copyImageAndClose(nil)
+        let png = pasteboard.data(forType: .png)
+        check(png.flatMap(NSBitmapImageRep.init(data:))?.pixelsWide == NSBitmapImageRep(data: doc.renderedPNG()!)?.pixelsWide,
+              "⇧⌘C puts a full-size PNG on the clipboard")
+        check(!NSDocumentController.shared.documents.contains { $0 === other }, "⇧⌘C closes the document without a save prompt")
     }
 
     private static func snapshot(_ view: NSView, to url: URL) {

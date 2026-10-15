@@ -49,7 +49,10 @@ enum Tool: Int, CaseIterable, Codable, Identifiable {
     /// `graphicClassForTool:`. Only the tools ported so far return a class.
     var graphicClass: Graphic.Type? {
         switch self {
+        case .arrowNormal: ArrowNormal.self
         case .shapeRectangle: ShapeRectangle.self
+        case .shapeCircle: ShapeCircle.self
+        case .text: TextBox.self
         default: nil
         }
     }

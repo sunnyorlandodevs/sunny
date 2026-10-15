@@ -5,8 +5,7 @@ import UniformTypeIdentifiers
 ///
 /// Every mutation of `graphics` goes through this class so undo/redo stays in one place.
 final class Document: NSDocument {
-    nonisolated static let nativeTypeID = "com.marcoledesma.annotate.document"
-    static var nativeType: String { nativeTypeID }
+    nonisolated static let pngTypeID = UTType.png.identifier
     static let blankCanvasSize = CGSize(width: 1024, height: 768)
 
     private(set) var image: NSImage?
@@ -15,22 +14,28 @@ final class Document: NSDocument {
     /// Called after anything visible changes (edits, undo, redo).
     var onChange: (() -> Void)?
 
-    /// Set when the document was opened from a plain image rather than a saved `.annot`.
-    private var importedImageName: String?
+    /// Asked to commit an in-progress edit (e.g. typing in a text box) before the
+    /// document is flattened for saving or copying.
+    var commitPendingEdits: (() -> Void)?
+
+    /// Name of the screenshot/image this document was opened from.
+    private var sourceName: String?
 
     var canvasSize: CGSize { image?.size ?? Self.blankCanvasSize }
 
-    nonisolated override class var autosavesInPlace: Bool { true }
-    nonisolated override class var readableTypes: [String] { [nativeTypeID, UTType.image.identifier] }
-    nonisolated override class var writableTypes: [String] { [nativeTypeID] }
-    nonisolated override class func isNativeType(_ type: String) -> Bool { type == nativeTypeID }
+    // Saving writes a flattened PNG. No autosave: an autosave would flatten the
+    // annotations into a file nobody asked for.
+    nonisolated override class var autosavesInPlace: Bool { false }
+    nonisolated override class var readableTypes: [String] { [UTType.image.identifier] }
+    nonisolated override class var writableTypes: [String] { [pngTypeID] }
+    nonisolated override class func isNativeType(_ type: String) -> Bool { type == pngTypeID }
 
     override func makeWindowControllers() {
-        // An opened image becomes a new untitled `.annot` document, so Save never
-        // overwrites the original screenshot.
-        if let name = importedImageName, fileURL != nil {
+        // An opened image becomes a new untitled document, so Save asks where to put
+        // the annotated PNG instead of overwriting the screenshot.
+        if let name = sourceName, fileURL != nil {
             fileURL = nil
-            fileType = Self.nativeType
+            fileType = Self.pngTypeID
             displayName = name
         }
         addWindowController(DocumentWindowController(document: self))
@@ -40,8 +45,9 @@ final class Document: NSDocument {
     static func openUntitled(with image: NSImage, name: String) {
         let document = Document()
         document.image = normalized(image)
-        document.importedImageName = name
+        document.sourceName = name
         document.displayName = name
+        document.fileType = pngTypeID
         NSDocumentController.shared.addDocument(document)
         document.makeWindowControllers()
         document.showWindows()
@@ -55,42 +61,24 @@ final class Document: NSDocument {
     nonisolated override func read(from url: URL, ofType typeName: String) throws {
         try super.read(from: url, ofType: typeName)
         MainActor.assumeIsolated {
-            if typeName != Self.nativeType {
-                importedImageName = url.deletingPathExtension().lastPathComponent
-            }
+            sourceName = url.deletingPathExtension().lastPathComponent
         }
     }
 
     nonisolated override func read(from data: Data, ofType typeName: String) throws {
-        try MainActor.assumeIsolated { try readContents(from: data, ofType: typeName) }
-    }
-
-    nonisolated override func data(ofType typeName: String) throws -> Data {
-        try MainActor.assumeIsolated { try encodedContents() }
-    }
-
-    func readContents(from data: Data, ofType typeName: String) throws {
-        if typeName == Self.nativeType {
-            let file = try JSONDecoder().decode(DocumentFile.self, from: data)
-            image = file.image.flatMap(NSImage.init(data:))
-            graphics = file.graphics.compactMap(Graphic.make(from:))
-        } else if UTType(typeName)?.conforms(to: .image) == true {
-            guard let image = NSImage(data: data) else {
-                throw CocoaError(.fileReadCorruptFile)
-            }
+        try MainActor.assumeIsolated {
+            guard let image = NSImage(data: data) else { throw CocoaError(.fileReadCorruptFile) }
             self.image = Self.normalized(image)
             graphics = []
-        } else {
-            throw CocoaError(.fileReadUnsupportedScheme)
         }
     }
 
-    func encodedContents() throws -> Data {
-        let file = DocumentFile(image: image.flatMap(Self.pngData(of:)),
-                                graphics: graphics.map(\.record))
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        return try encoder.encode(file)
+    nonisolated override func data(ofType typeName: String) throws -> Data {
+        try MainActor.assumeIsolated {
+            commitPendingEdits?()
+            guard let png = renderedPNG() else { throw CocoaError(.fileWriteUnknown) }
+            return png
+        }
     }
 
     // MARK: Graphics editing (undoable)
@@ -180,20 +168,20 @@ final class Document: NSDocument {
         return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
     }
 
-    @IBAction func exportPNG(_ sender: Any?) {
-        guard let window = windowControllers.first?.window else { return }
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = (importedImageName ?? displayName) + " annotated.png"
-        panel.beginSheetModal(for: window) { [weak self] response in
-            guard response == .OK, let url = panel.url, let self else { return }
-            do {
-                guard let data = self.renderedPNG() else { throw CocoaError(.fileWriteUnknown) }
-                try data.write(to: url)
-            } catch {
-                self.presentError(error)
-            }
+    /// ⇧⌘C: put the annotated image on the clipboard and close without asking to save.
+    @IBAction func copyImageAndClose(_ sender: Any?) {
+        commitPendingEdits?()
+        guard let png = renderedPNG() else {
+            NSSound.beep()
+            return
         }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setData(png, forType: .png)
+        if let tiff = NSBitmapImageRep(data: png)?.tiffRepresentation {
+            pasteboard.setData(tiff, forType: .tiff)  // for apps that only read TIFF
+        }
+        close()
     }
 
     // MARK: Image helpers
@@ -210,18 +198,4 @@ final class Document: NSDocument {
         image.size = pixelSize(of: image)
         return image
     }
-
-    private static func pngData(of image: NSImage) -> Data? {
-        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-        let rep = NSBitmapImageRep(cgImage: cg)
-        rep.size = image.size
-        return rep.representation(using: .png, properties: [:])
-    }
-}
-
-/// On-disk format: JSON with the PNG image base64-encoded alongside the graphic records.
-struct DocumentFile: Codable {
-    var version = 1
-    var image: Data?
-    var graphics: [Graphic.Record]
 }

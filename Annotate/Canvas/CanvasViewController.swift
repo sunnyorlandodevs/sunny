@@ -29,6 +29,17 @@ final class CanvasViewController: NSViewController {
     private var drag = Drag.none
     private var lastPoint = CGPoint.zero
 
+    /// Inline text editing: a transparent NSTextView over the TextBox graphic, which keeps
+    /// rendering itself live underneath so what you type looks like the final result.
+    private struct Editing {
+        let text: TextBox
+        let textView: NSTextView
+        /// nil for a brand-new text box that isn't in the document yet.
+        let before: Graphic.Record?
+    }
+    private var editing: Editing?
+    var editingText: TextBox? { editing?.text }
+
     init(document: Document, settings: CanvasSettings) {
         self.document = document
         self.settings = settings
@@ -55,6 +66,7 @@ final class CanvasViewController: NSViewController {
         view = scrollView
 
         document?.onChange = { [weak self] in self?.documentDidChange() }
+        document?.commitPendingEdits = { [weak self] in self?.endEditing() }
         settings.onStyleChange = { [weak self] style in self?.applyStyleToSelection(style) }
     }
 
@@ -68,8 +80,13 @@ final class CanvasViewController: NSViewController {
 
     // MARK: Mouse state machine
 
-    func mouseDown(at point: CGPoint, extendingSelection: Bool) {
+    func mouseDown(at point: CGPoint, extendingSelection: Bool, clickCount: Int = 1) {
         guard let document else { return }
+        // Clicking anywhere while typing just finishes the text box.
+        if editing != nil {
+            endEditing()
+            return
+        }
         view.window?.makeFirstResponder(canvasView)
         lastPoint = point
 
@@ -83,6 +100,11 @@ final class CanvasViewController: NSViewController {
 
         // 2. An existing graphic (topmost first) → select and move.
         if let hit = document.graphics.last(where: { $0.isContentsUnderPoint(point) }) {
+            if clickCount == 2, let text = hit as? TextBox {
+                drag = .none
+                beginEditing(text, before: text.record)
+                return
+            }
             let isSelected = selection.contains { $0 === hit }
             if extendingSelection {
                 selection = isSelected ? selection.filter { $0 !== hit } : selection + [hit]
@@ -101,6 +123,12 @@ final class CanvasViewController: NSViewController {
         }
         let graphic = type.init(at: point, color: settings.color,
                                 size: settings.size, hasShadow: settings.hasShadow)
+        // Text boxes start typing on click instead of being dragged out.
+        if let text = graphic as? TextBox {
+            drag = .none
+            beginEditing(text, before: nil)
+            return
+        }
         creatingGraphic = graphic
         drag = .creating(graphic, handle: type.creationSizingHandle)
     }
@@ -148,6 +176,66 @@ final class CanvasViewController: NSViewController {
         }
     }
 
+    // MARK: Text editing
+
+    func beginEditing(_ text: TextBox, before: Graphic.Record?) {
+        endEditing()
+        let textView = NSTextView(frame: text.textFrame)
+        textView.isRichText = false
+        textView.allowsUndo = false  // the document records one undo step per edit session
+        textView.drawsBackground = false
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = false
+        textView.isHorizontallyResizable = true
+        textView.isVerticallyResizable = true
+        textView.string = text.string
+        textView.delegate = self
+        canvasView.addSubview(textView)
+        editing = Editing(text: text, textView: textView, before: before)
+        selection = [text]
+        styleTextView()
+        textView.selectAll(nil)
+        view.window?.makeFirstResponder(textView)
+        canvasView.needsDisplay = true
+    }
+
+    /// Commits the text box: empty text is dropped, anything else becomes one undo step.
+    func endEditing() {
+        guard let editing, let document else { return }
+        self.editing = nil
+        editing.textView.delegate = nil
+        editing.textView.removeFromSuperview()
+        view.window?.makeFirstResponder(canvasView)
+
+        let text = editing.text
+        let isInDocument = document.graphics.contains { $0 === text }
+        if text.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            selection = []
+            if isInDocument { document.remove([text], actionName: "Delete Text") }
+        } else if !isInDocument {
+            document.add(text, actionName: "Add Text")
+            selection = [text]
+        } else if let before = editing.before {
+            document.graphic(text, didChangeFrom: before, actionName: "Edit Text")
+        }
+        canvasView.needsDisplay = true
+    }
+
+    /// The text view only shows the caret and selection; the glyphs it lays out are
+    /// clear so the TextBox graphic's outlined rendering underneath is what you see.
+    private func styleTextView() {
+        guard let editing else { return }
+        let textView = editing.textView
+        textView.font = editing.text.font
+        textView.textColor = .clear
+        textView.typingAttributes = [.font: editing.text.font, .foregroundColor: NSColor.clear]
+        textView.insertionPointColor = editing.text.color
+        textView.textContainer?.containerSize = CGSize(width: editing.text.wrapWidth ?? .greatestFiniteMagnitude,
+                                                       height: .greatestFiniteMagnitude)
+        textView.frame = editing.text.textFrame
+    }
+
     // MARK: Editing
 
     func deleteSelection() {
@@ -167,8 +255,13 @@ final class CanvasViewController: NSViewController {
             case .shadow: graphic.hasShadow = settings.hasShadow
             }
             graphic.invalidateCaches()
-            document.graphic(graphic, didChangeFrom: before, actionName: "Change Style")
+            // A text box being typed into isn't in the document yet if it's new.
+            if document.graphics.contains(where: { $0 === graphic }) {
+                document.graphic(graphic, didChangeFrom: before, actionName: "Change Style")
+            }
         }
+        styleTextView()
+        canvasView.needsDisplay = true
     }
 
     @IBAction func delete(_ sender: Any?) { deleteSelection() }
@@ -181,6 +274,24 @@ final class CanvasViewController: NSViewController {
     @IBAction func zoomOut(_ sender: Any?) { scrollView.magnification /= 1.25 }
     @IBAction func zoomToActualSize(_ sender: Any?) { scrollView.magnification = 1 }
 
+}
+
+extension CanvasViewController: NSTextViewDelegate {
+    func textDidChange(_ notification: Notification) {
+        guard let editing else { return }
+        editing.text.string = editing.textView.string
+        editing.textView.frame = editing.text.textFrame
+        canvasView.needsDisplay = true
+    }
+
+    /// Esc finishes the text box (keeps what was typed).
+    func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        if selector == #selector(NSResponder.cancelOperation(_:)) {
+            endEditing()
+            return true
+        }
+        return false
+    }
 }
 
 extension CanvasViewController: NSMenuItemValidation {

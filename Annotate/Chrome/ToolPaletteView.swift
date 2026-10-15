@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The bar above the canvas: the 10 tools, then color / stroke size / shadow.
+/// The bar above the canvas: the ported tools, then color / stroke size / shadow.
 struct ToolPaletteView: View {
     @Bindable var settings: CanvasSettings
 
@@ -12,7 +12,7 @@ struct ToolPaletteView: View {
     var body: some View {
         HStack(spacing: 12) {
             HStack(spacing: 2) {
-                ForEach(Tool.allCases) { tool in
+                ForEach(Tool.allCases.filter(\.isAvailable)) { tool in
                     Button {
                         settings.tool = tool
                     } label: {
@@ -22,8 +22,7 @@ struct ToolPaletteView: View {
                                         in: RoundedRectangle(cornerRadius: 5))
                     }
                     .buttonStyle(.borderless)
-                    .disabled(!tool.isAvailable)
-                    .help(tool.isAvailable ? tool.title : "\(tool.title) (not ported yet)")
+                    .help(tool.title)
                 }
             }
 

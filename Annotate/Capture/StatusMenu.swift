@@ -1,13 +1,15 @@
 import AppKit
+import ServiceManagement
 
-/// Menu bar icon with the capture commands, so capturing works with no window open.
-final class StatusMenu: NSObject {
+/// The app's only permanent UI: a menu bar icon with the capture commands.
+final class StatusMenu: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
     override init() {
         super.init()
-        item.button?.image = NSImage(systemSymbolName: "pencil.and.scribble",
+        item.button?.image = NSImage(systemSymbolName: "camera.viewfinder",
                                      accessibilityDescription: "Annotate")
+        item.button?.toolTip = "Annotate: capture and annotate screenshots"
         let menu = NSMenu()
         menu.addItem(entry("Capture Region", GlobalHotKeys.captureRegion, #selector(captureRegion)))
         menu.addItem(entry("Capture Window", GlobalHotKeys.captureWindow, #selector(captureWindow)))
@@ -15,8 +17,30 @@ final class StatusMenu: NSObject {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open…", action: #selector(openDocument), keyEquivalent: "").target = self
         menu.addItem(.separator())
+        loginItem.target = self
+        menu.addItem(loginItem)
         menu.addItem(withTitle: "Quit Annotate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        menu.delegate = self
         item.menu = menu
+    }
+
+    private let loginItem = NSMenuItem(title: "Open at Login", action: #selector(toggleOpenAtLogin), keyEquivalent: "")
+
+    func menuWillOpen(_ menu: NSMenu) {
+        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    }
+
+    @objc private func toggleOpenAtLogin() {
+        do {
+            if SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            } else {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            NSApp.activate()
+            NSApp.presentError(error)
+        }
     }
 
     /// Shows the global shortcut on the right, display-only (the hot key does the work).

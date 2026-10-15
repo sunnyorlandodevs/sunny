@@ -17,6 +17,10 @@ final class CanvasView: NSView {
         context.clip(to: dirtyRect)
         document.drawCanvas(in: context)
         controller.creatingGraphic?.drawContents(in: context, isBeingCreated: true)
+        // A brand-new text box isn't in the document until typing finishes.
+        if let text = controller.editingText, !document.graphics.contains(where: { $0 === text }) {
+            text.drawContents(in: context, isBeingCreated: true)
+        }
         for graphic in controller.selection {
             graphic.drawHandles(in: context)
         }
@@ -29,7 +33,8 @@ final class CanvasView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         controller?.mouseDown(at: convert(event.locationInWindow, from: nil),
-                              extendingSelection: event.modifierFlags.contains(.shift))
+                              extendingSelection: event.modifierFlags.contains(.shift),
+                              clickCount: event.clickCount)
     }
 
     override func mouseDragged(with event: NSEvent) {

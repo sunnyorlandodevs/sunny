@@ -9,12 +9,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let delegate = AppDelegate()
         app.delegate = delegate
         app.mainMenu = MainMenu.make()
-        app.setActivationPolicy(.regular)
+        // Menu bar app: no Dock icon; windows appear only for captures.
+        app.setActivationPolicy(.accessory)
         app.run()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.activate()
         statusMenu = StatusMenu()
         let refused = GlobalHotKeys.register()
         if !refused.isEmpty {
@@ -26,6 +26,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
-    /// Launching with nothing to open shows a blank canvas, like File > New.
-    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
+    /// Launching just puts the icon in the menu bar; nothing opens until a capture.
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
 }
