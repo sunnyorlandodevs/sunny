@@ -2,15 +2,15 @@
 import AppKit
 
 /// Scripted end-to-end check of the rectangle tool, run with:
-///   Annotate.app/Contents/MacOS/Annotate -AnnotateSelfTestImage <image> -AnnotateSelfTestOut <dir>
+///   Sunny.app/Contents/MacOS/Sunny -SunnySelfTestImage <image> -SunnySelfTestOut <dir>
 /// (`-key value` pairs, so AppKit reads them as defaults instead of files to open.)
 /// Drives the same CanvasViewController mouse entry points the real events use,
 /// then checks geometry, undo/redo, save round-trip, and PNG export.
 enum SelfTest {
     static func runIfRequested() {
         let defaults = UserDefaults.standard
-        guard let imagePath = defaults.string(forKey: "AnnotateSelfTestImage"),
-              let outPath = defaults.string(forKey: "AnnotateSelfTestOut") else { return }
+        guard let imagePath = defaults.string(forKey: "SunnySelfTestImage"),
+              let outPath = defaults.string(forKey: "SunnySelfTestOut") else { return }
         setvbuf(stdout, nil, _IONBF, 0)
         let imageURL = URL(fileURLWithPath: imagePath)
         let outDir = URL(fileURLWithPath: outPath)
@@ -26,7 +26,7 @@ enum SelfTest {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 let failures = run(doc, outDir: outDir)
                 // Optional pause so an external `screencapture -l <window>` can grab the real window.
-                let hold = defaults.double(forKey: "AnnotateSelfTestHold")
+                let hold = defaults.double(forKey: "SunnySelfTestHold")
                 if let window = doc.windowControllers.first?.window { print("WINDOW \(window.windowNumber)") }
                 DispatchQueue.main.asyncAfter(deadline: .now() + hold) { finish(failures) }
             }

@@ -7,9 +7,8 @@ final class StatusMenu: NSObject, NSMenuDelegate {
 
     override init() {
         super.init()
-        item.button?.image = NSImage(systemSymbolName: "camera.viewfinder",
-                                     accessibilityDescription: "Annotate")
-        item.button?.toolTip = "Annotate: capture and annotate screenshots"
+        item.button?.image = Self.menuBarIcon
+        item.button?.toolTip = "Sunny: capture and annotate screenshots"
         let menu = NSMenu()
         menu.addItem(entry("Capture Region", GlobalHotKeys.captureRegion, #selector(captureRegion)))
         menu.addItem(entry("Capture Window", GlobalHotKeys.captureWindow, #selector(captureWindow)))
@@ -19,10 +18,44 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         loginItem.target = self
         menu.addItem(loginItem)
-        menu.addItem(withTitle: "Quit Annotate", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Quit Sunny", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         menu.delegate = self
         item.menu = menu
     }
+
+    /// The app icon reduced to a template: viewfinder brackets around a small sun.
+    private static let menuBarIcon: NSImage = {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            NSColor.black.set()
+            let brackets = NSBezierPath()
+            brackets.lineWidth = 1.6
+            brackets.lineCapStyle = .round
+            brackets.lineJoinStyle = .round
+            let box = rect.insetBy(dx: 1.5, dy: 1.5), arm: CGFloat = 4.5
+            for (corner, dx, dy) in [(CGPoint(x: box.minX, y: box.maxY), 1.0, -1.0), (CGPoint(x: box.maxX, y: box.maxY), -1.0, -1.0),
+                                     (CGPoint(x: box.maxX, y: box.minY), -1.0, 1.0), (CGPoint(x: box.minX, y: box.minY), 1.0, 1.0)] {
+                brackets.move(to: CGPoint(x: corner.x, y: corner.y + dy * arm))
+                brackets.line(to: corner)
+                brackets.line(to: CGPoint(x: corner.x + dx * arm, y: corner.y))
+            }
+            brackets.stroke()
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            NSBezierPath(ovalIn: CGRect(x: center.x - 2.6, y: center.y - 2.6, width: 5.2, height: 5.2)).fill()
+            let rays = NSBezierPath()
+            rays.lineWidth = 1.3
+            rays.lineCapStyle = .round
+            for i in 0..<8 {
+                let angle = CGFloat(i) * .pi / 4
+                rays.move(to: CGPoint(x: center.x + cos(angle) * 4, y: center.y + sin(angle) * 4))
+                rays.line(to: CGPoint(x: center.x + cos(angle) * 5.4, y: center.y + sin(angle) * 5.4))
+            }
+            rays.stroke()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Sunny"
+        return image
+    }()
 
     private let loginItem = NSMenuItem(title: "Open at Login", action: #selector(toggleOpenAtLogin), keyEquivalent: "")
 

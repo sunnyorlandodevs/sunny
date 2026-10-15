@@ -65,7 +65,7 @@ enum ScreenCapture {
     private static func newCaptureURL() -> URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let folder = caches
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "Annotate")
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "Sunny")
             .appendingPathComponent("Captures")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appendingPathComponent("Screenshot \(timestamp()).png")

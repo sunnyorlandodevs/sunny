@@ -38,18 +38,18 @@ enum MainMenu {
     }
 
     private static func appMenu() -> NSMenu {
-        let menu = NSMenu(title: "Annotate")
-        menu.addItem(item("About Annotate", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
+        let menu = NSMenu(title: "Sunny")
+        menu.addItem(item("About Sunny", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
         menu.addItem(.separator())
         let services = NSMenu(title: "Services")
         NSApp.servicesMenu = services
         menu.addItem(submenu(services))
         menu.addItem(.separator())
-        menu.addItem(item("Hide Annotate", #selector(NSApplication.hide(_:)), "h"))
+        menu.addItem(item("Hide Sunny", #selector(NSApplication.hide(_:)), "h"))
         menu.addItem(item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]))
         menu.addItem(item("Show All", #selector(NSApplication.unhideAllApplications(_:))))
         menu.addItem(.separator())
-        menu.addItem(item("Quit Annotate", #selector(NSApplication.terminate(_:)), "q"))
+        menu.addItem(item("Quit Sunny", #selector(NSApplication.terminate(_:)), "q"))
         return menu
     }
 

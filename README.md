@@ -1,12 +1,14 @@
-# Annotate (native rebuild)
+# Sunny
 
-A native Apple Silicon rebuild of Annotate 2.1.4 (`se.razola.Glui2`, 2016): a menu bar screenshot tool that opens each capture in a window for quick annotation. AppKit canvas, SwiftUI chrome, Swift 6, macOS 14+, arm64 only.
+A menu bar screenshot tool: capture a region or window and it opens in a window for quick annotation (arrows, boxes, spotlight, outlined text), then copy or save it as a PNG.
+
+Sunny is a native Apple Silicon rebuild of the abandoned Annotate 2.1.4 (`se.razola.Glui2`, 2016). AppKit canvas, SwiftUI chrome, Swift 6, macOS 14+, arm64 only.
 
 `reference/` is the source of truth for behavior (decompiled original). Start with `reference/REBUILD_SCOPE.md`.
 
 ## How it works
 
-The app runs in the background: no Dock icon, just a camera icon in the menu bar. Nothing opens at launch.
+The app runs in the background: no Dock icon, just a sun-in-a-viewfinder icon in the menu bar. Nothing opens at launch.
 
 | Action | Shortcut |
 |--------|----------|
@@ -18,7 +20,7 @@ The app runs in the background: no Dock icon, just a camera icon in the menu bar
 | Save as PNG | ⌘S |
 
 - **Shortcuts:** they match the original. ⇧⌘5 only reaches the app if macOS's own "Screenshot and recording options" shortcut is turned off (System Settings › Keyboard › Keyboard Shortcuts › Screenshots).
-- **Captures:** they use macOS's `screencapture` tool (`-o -i [-W]`), and the first one asks for Screen Recording permission. Captures are saved to `~/Library/Caches/com.marcoledesma.Annotate/Captures/`.
+- **Captures:** they use macOS's `screencapture` tool (`-o -i [-W]`), and the first one asks for Screen Recording permission. Captures are saved to `~/Library/Caches/com.marcoledesma.Sunny/Captures/`.
 - **Signing:** the app is signed with the Apple Development team (U738K5HP9R) so that permission survives rebuilds.
 - **Open at Login:** a toggle in the menu bar menu.
 
@@ -53,7 +55,7 @@ Closing a window or quitting never asks about unsaved changes (`isDocumentEdited
 ## Layout
 
 ```
-Annotate/
+Sunny/
   App/        AppDelegate (accessory app, programmatic main menu), DEBUG-only SelfTest
   Capture/    ScreenCapture (screencapture + clipboard), GlobalHotKeys (Carbon), StatusMenu
   Document/   Document (NSDocument: image + [Graphic] + undo, PNG save, copy), window + toast
@@ -62,11 +64,22 @@ Annotate/
   Chrome/     SwiftUI tool palette + CanvasSettings (persisted)
 ```
 
+## Building a release
+
+```bash
+xcodebuild -project Sunny.xcodeproj -scheme Sunny -configuration Release -derivedDataPath build/DerivedData build
+ditto -c -k --keepParent build/DerivedData/Build/Products/Release/Sunny.app build/release/Sunny-1.0.zip
+```
+
+The app icon comes from `Support/Icon/make-icon.swift` (it draws the 1024px master; the sizes in `Sunny/Assets.xcassets/AppIcon.appiconset` are scaled from it with `sips`).
+
+The build is signed with an Apple Development certificate, not Developer ID, and isn't notarized. It runs on this Mac. On another Mac, Gatekeeper will block it until it's allowed in System Settings › Privacy & Security.
+
 ## Self-test (Debug builds)
 
 Drives the real controller code for every tool: drawing, resizing, moving, text typing and editing, undo/redo, PNG save, copy, and closing without a prompt. It restores your clipboard and settings afterwards.
 
 ```bash
-xcodebuild -project Annotate.xcodeproj -scheme Annotate -derivedDataPath build/DerivedData build
-build/DerivedData/Build/Products/Debug/Annotate.app/Contents/MacOS/Annotate -AnnotateSelfTestImage some.png -AnnotateSelfTestOut /tmp/out
+xcodebuild -project Sunny.xcodeproj -scheme Sunny -derivedDataPath build/DerivedData build
+build/DerivedData/Build/Products/Debug/Sunny.app/Contents/MacOS/Sunny -SunnySelfTestImage some.png -SunnySelfTestOut /tmp/out
 ```

@@ -100,8 +100,11 @@ final class DocumentWindowController: NSWindowController {
                 context.duration = 0.35
                 hud.animator().alphaValue = 0
             }, completionHandler: {
-                hud.removeFromSuperview()
-                if self?.toast === hud { self?.toast = nil }
+                // AppKit calls this on the main thread.
+                MainActor.assumeIsolated {
+                    hud.removeFromSuperview()
+                    if self?.toast === hud { self?.toast = nil }
+                }
             })
         }
     }

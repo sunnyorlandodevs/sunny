@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu = StatusMenu()
         let refused = GlobalHotKeys.register()
         if !refused.isEmpty {
-            NSLog("Annotate: shortcuts already taken by another app: %@",
+            NSLog("Sunny: shortcuts already taken by another app: %@",
                   refused.map(\.display).joined(separator: ", "))
         }
         #if DEBUG
