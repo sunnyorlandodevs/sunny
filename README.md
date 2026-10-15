@@ -15,7 +15,7 @@ A native Apple Silicon rebuild of Annotate 2.1.4 (`se.razola.Glui2`, 2016). AppK
 
 | Command | Global shortcut | Original |
 |---------|-----------------|----------|
-| Capture Region | ⇧⌘2 | ⇧⌘5 (taken by macOS's screenshot toolbar since 2018) |
+| Capture Region | ⇧⌘5 | same (turn off macOS's "Screenshot and recording options" shortcut first) |
 | Capture Window | ⇧⌘6 | same |
 | New from Clipboard | ⇧⌘7 | same |
 | Show all windows | ⇧⌘8 | same |

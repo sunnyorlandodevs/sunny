@@ -11,11 +11,11 @@ enum GlobalHotKeys {
         let action: () -> Void
     }
 
-    /// Defaults follow the original (`AppDelegate registerDefaults`: ⌘⇧ + 5/6/7/8), except
-    /// region capture: macOS took ⌘⇧5 for its own screenshot toolbar, so it never
-    /// reaches apps anymore. ⌘⇧2 is free.
+    /// Defaults match the original (`AppDelegate registerDefaults`: ⌘⇧ + 5/6/7/8).
+    /// macOS also uses ⌘⇧5 for its screenshot toolbar; turn that off in System Settings ›
+    /// Keyboard › Keyboard Shortcuts › Screenshots or the system keeps the key.
     static let shortcuts: [Shortcut] = [
-        Shortcut(keyCode: kVK_ANSI_2, modifiers: cmdKey | shiftKey, display: "⇧⌘2") { ScreenCapture.capture(.region) },
+        Shortcut(keyCode: kVK_ANSI_5, modifiers: cmdKey | shiftKey, display: "⇧⌘5") { ScreenCapture.capture(.region) },
         Shortcut(keyCode: kVK_ANSI_6, modifiers: cmdKey | shiftKey, display: "⇧⌘6") { ScreenCapture.capture(.window) },
         Shortcut(keyCode: kVK_ANSI_7, modifiers: cmdKey | shiftKey, display: "⇧⌘7") { ScreenCapture.newFromClipboard() },
         Shortcut(keyCode: kVK_ANSI_8, modifiers: cmdKey | shiftKey, display: "⇧⌘8") { showAllWindows() },
