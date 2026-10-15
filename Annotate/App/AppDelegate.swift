@@ -2,6 +2,8 @@ import AppKit
 
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var statusMenu: StatusMenu?
+
     static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()
@@ -13,6 +15,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.activate()
+        statusMenu = StatusMenu()
+        let refused = GlobalHotKeys.register()
+        if !refused.isEmpty {
+            NSLog("Annotate: shortcuts already taken by another app: %@",
+                  refused.map(\.display).joined(separator: ", "))
+        }
         #if DEBUG
         SelfTest.runIfRequested()
         #endif

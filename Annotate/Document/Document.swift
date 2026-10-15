@@ -36,6 +36,17 @@ final class Document: NSDocument {
         addWindowController(DocumentWindowController(document: self))
     }
 
+    /// New untitled document around an image that has no file (clipboard).
+    static func openUntitled(with image: NSImage, name: String) {
+        let document = Document()
+        document.image = normalized(image)
+        document.importedImageName = name
+        document.displayName = name
+        NSDocumentController.shared.addDocument(document)
+        document.makeWindowControllers()
+        document.showWindows()
+    }
+
     // MARK: Reading & writing
 
     // NSDocument declares these nonisolated, but with the default

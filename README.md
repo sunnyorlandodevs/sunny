@@ -11,6 +11,17 @@ A native Apple Silicon rebuild of Annotate 2.1.4 (`se.razola.Glui2`, 2016). AppK
 | ShapeRectangle | 4 | Done: draw, select, move, resize via 4 corner handles, undo/redo |
 | The other 9 | 0–3, 5–9 | Not ported yet (greyed out in the palette) |
 
+**Screenshot capture** (same approach as the original: macOS's own `screencapture` tool, and the result opens as a new document):
+
+| Command | Global shortcut | Original |
+|---------|-----------------|----------|
+| Capture Region | ⇧⌘2 | ⇧⌘5 (taken by macOS's screenshot toolbar since 2018) |
+| Capture Window | ⇧⌘6 | same |
+| New from Clipboard | ⇧⌘7 | same |
+| Show all windows | ⇧⌘8 | same |
+
+They're also in the menu bar icon and the File menu. The first capture asks for Screen Recording permission. Captures are saved to `~/Library/Caches/com.marcoledesma.Annotate/Captures/`. The app is signed with the Apple Development team (U738K5HP9R) so the permission survives rebuilds. Shortcuts can't be changed yet.
+
 Also working: open an image (it becomes a new untitled doc, so the original image is never overwritten), save/reopen, export PNG at the image's native pixel size (File › Export PNG…, ⇧⌘E), color/size/shadow on the current selection, zoom.
 
 ## Layout
@@ -18,6 +29,7 @@ Also working: open an image (it becomes a new untitled doc, so the original imag
 ```
 Annotate/
   App/        AppDelegate (programmatic main menu), DEBUG-only SelfTest
+  Capture/    ScreenCapture (screencapture + clipboard), GlobalHotKeys (Carbon), StatusMenu
   Document/   Document (NSDocument: image + [Graphic] + undo), window controller
   Model/      Tool (palette ids), Graphic (base), Shape, ShapeRectangle
   Canvas/     CanvasView (drawing), CanvasViewController (mouse state machine, selection)

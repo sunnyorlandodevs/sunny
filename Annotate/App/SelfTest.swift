@@ -149,6 +149,24 @@ enum SelfTest {
         } else {
             check(false, "export PNG")
         }
+        // Capture plumbing: hot keys registered, a finished capture file and a
+        // clipboard image each become a new untitled document.
+        check(GlobalHotKeys.registeredCount == GlobalHotKeys.shortcuts.count,
+              "global shortcuts registered (\(GlobalHotKeys.registeredCount)/\(GlobalHotKeys.shortcuts.count))")
+        let before = NSDocumentController.shared.documents.count
+        let capture = outDir.appendingPathComponent("Screenshot test.png")
+        try? FileManager.default.removeItem(at: capture)
+        if let png = doc.renderedPNG() { try? png.write(to: capture) }
+        ScreenCapture.openCapture(at: capture)
+        Document.openUntitled(with: doc.image!, name: "Clipboard test")
+        let docs = NSDocumentController.shared.documents.compactMap { $0 as? Document }
+        check(docs.count == before + 1 || docs.count == before + 2, "capture/clipboard open new documents (\(docs.count - before) so far)")
+        if let clip = docs.first(where: { $0.displayName == "Clipboard test" }) {
+            check(clip.fileURL == nil && clip.image != nil && !clip.windowControllers.isEmpty,
+                  "clipboard image opens as untitled doc with a window")
+        } else {
+            check(false, "clipboard document exists")
+        }
         snapshot(canvas.canvasView, to: outDir.appendingPathComponent("3-final-canvas.png"))
         snapshot(wc.window!.contentView!, to: outDir.appendingPathComponent("4-window.png"))
         return failures

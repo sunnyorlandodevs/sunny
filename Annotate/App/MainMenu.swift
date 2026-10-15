@@ -27,6 +27,16 @@ enum MainMenu {
         return item
     }
 
+    /// Capture commands. No key equivalent here: the global hot key already handles the
+    /// shortcut everywhere, and a menu key equivalent would fire it a second time.
+    private static func captureItem(_ title: String, _ shortcut: GlobalHotKeys.Shortcut) -> NSMenuItem {
+        let item = NSMenuItem(title: "\(title)  (\(shortcut.display))",
+                              action: #selector(CaptureActions.run(_:)), keyEquivalent: "")
+        item.target = CaptureActions.shared
+        item.representedObject = title
+        return item
+    }
+
     private static func appMenu() -> NSMenu {
         let menu = NSMenu(title: "Annotate")
         menu.addItem(item("About Annotate", #selector(NSApplication.orderFrontStandardAboutPanel(_:))))
@@ -47,6 +57,11 @@ enum MainMenu {
         let menu = NSMenu(title: "File")
         menu.addItem(item("New", #selector(NSDocumentController.newDocument(_:)), "n"))
         menu.addItem(item("Open…", #selector(NSDocumentController.openDocument(_:)), "o"))
+        menu.addItem(.separator())
+        menu.addItem(captureItem("Capture Region", GlobalHotKeys.captureRegion))
+        menu.addItem(captureItem("Capture Window", GlobalHotKeys.captureWindow))
+        menu.addItem(captureItem("New from Clipboard", GlobalHotKeys.newFromClipboard))
+        menu.addItem(.separator())
         let recent = NSMenu(title: "Open Recent")
         recent.addItem(item("Clear Menu", #selector(NSDocumentController.clearRecentDocuments(_:))))
         menu.addItem(submenu(recent))
@@ -85,5 +100,19 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))))
         return menu
+    }
+}
+
+/// Target for the File menu capture items.
+final class CaptureActions: NSObject {
+    static let shared = CaptureActions()
+
+    @objc func run(_ sender: NSMenuItem) {
+        switch sender.representedObject as? String {
+        case "Capture Region": ScreenCapture.capture(.region)
+        case "Capture Window": ScreenCapture.capture(.window)
+        case "New from Clipboard": ScreenCapture.newFromClipboard()
+        default: break
+        }
     }
 }
