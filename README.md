@@ -72,7 +72,7 @@ Sunny/
 
 ```bash
 xcodebuild -project Sunny.xcodeproj -scheme Sunny -configuration Release -derivedDataPath build/DerivedData build
-ditto -c -k --keepParent build/DerivedData/Build/Products/Release/Sunny.app build/release/Sunny-1.0.zip
+ditto -c -k --keepParent build/DerivedData/Build/Products/Release/Sunny.app build/release/Sunny-1.1.zip
 ```
 
 The app icon comes from `Support/Icon/make-icon.swift` (it draws the 1024px master; the sizes in `Sunny/Assets.xcassets/AppIcon.appiconset` are scaled from it with `sips`).
