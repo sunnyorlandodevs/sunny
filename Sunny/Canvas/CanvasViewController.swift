@@ -10,7 +10,7 @@ final class CanvasViewController: NSViewController {
     let settings: CanvasSettings
 
     let canvasView = CanvasView()
-    private let scrollView = NSScrollView()
+    let scrollView = NSScrollView()
 
     var selection: [Graphic] = [] {
         didSet { canvasView.needsDisplay = true }
@@ -57,7 +57,8 @@ final class CanvasViewController: NSViewController {
         scrollView.allowsMagnification = true
         scrollView.minMagnification = 0.1
         scrollView.maxMagnification = 8
-        scrollView.backgroundColor = .underPageBackgroundColor
+        // Matches the palette, so a capture narrower than the palette has no visible border.
+        scrollView.backgroundColor = .windowBackgroundColor
         scrollView.drawsBackground = true
 
         canvasView.controller = self

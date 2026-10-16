@@ -34,16 +34,23 @@ final class DocumentWindowController: NSWindowController {
             canvas.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
 
-        // Fit the window to the image, within the visible screen area.
+        // Fit the window to the image exactly so no background shows around it.
+        // Large captures are scaled down to fit the visible screen area instead.
         let visible = NSScreen.main?.visibleFrame.size ?? CGSize(width: 1440, height: 900)
-        let contentSize = CGSize(width: min(max(document.canvasSize.width + 40, 720), visible.width * 0.9),
-                                 height: min(document.canvasSize.height + 90, visible.height * 0.9))
+        let chromeHeight = palette.fittingSize.height + 1
+        let minWidth = palette.fittingSize.width
+        let image = document.canvasSize
+        let scale = min(1, visible.width * 0.9 / max(image.width, 1),
+                        (visible.height * 0.9 - chromeHeight) / max(image.height, 1))
+        let contentSize = CGSize(width: max(ceil(image.width * scale), minWidth),
+                                 height: ceil(image.height * scale) + chromeHeight)
         let window = NSWindow(contentRect: CGRect(origin: .zero, size: contentSize),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
-        window.contentMinSize = CGSize(width: 640, height: 360)
+        window.contentMinSize = CGSize(width: minWidth, height: chromeHeight + 100)
         window.contentView = container
         window.center()
+        canvasController.scrollView.magnification = scale
 
         super.init(window: window)
         window.makeFirstResponder(canvasController.canvasView)
