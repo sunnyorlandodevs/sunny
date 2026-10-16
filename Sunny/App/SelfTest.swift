@@ -30,6 +30,8 @@ enum SelfTest {
                 // `-SunnySelfTestPose crop` leaves a crop frame up for the screenshot.
                 if defaults.string(forKey: "SunnySelfTestPose") == "crop",
                    let wc = doc.windowControllers.first as? DocumentWindowController {
+                    NSApp.activate()
+                    wc.window?.makeKeyAndOrderFront(nil)
                     wc.settings.tool = .crop
                     wc.canvasController.mouseDown(at: CGPoint(x: 150, y: 120), extendingSelection: false)
                     wc.canvasController.mouseDragged(to: CGPoint(x: 900, y: 600))

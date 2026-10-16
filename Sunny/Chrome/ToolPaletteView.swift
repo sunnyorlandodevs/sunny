@@ -53,10 +53,10 @@ struct StyleBar: View {
         HStack(spacing: 10) {
             if settings.isCropPending {
                 Button("Cancel") { settings.onCropCommand?(false) }
-                    .controlSize(.large)
+                    .buttonStyle(PillButtonStyle(isProminent: false))
+                    .help("Drop the crop frame (Esc)")
                 Button("Crop") { settings.onCropCommand?(true) }
-                    .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PillButtonStyle(isProminent: true))
                     .help("Crop to the frame (Return)")
             } else {
                 colorButton
@@ -97,6 +97,24 @@ struct StyleBar: View {
         .help(settings.hasShadow ? "Shadow on" : "Shadow off")
         .accessibilityLabel("Shadow")
         .accessibilityValue(settings.hasShadow ? "On" : "Off")
+    }
+}
+
+/// Drawn by hand: the system prominent style loses its fill in the title bar, which
+/// left white text on a white background.
+private struct PillButtonStyle: ButtonStyle {
+    let isProminent: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(isProminent ? Color.white : Color.primary)
+            .padding(.horizontal, 14)
+            .frame(height: 28)
+            .background(isProminent ? Color.accentColor : Color.primary.opacity(0.08),
+                        in: Capsule())
+            .opacity(configuration.isPressed ? 0.75 : 1)
+            .contentShape(Capsule())
     }
 }
 
