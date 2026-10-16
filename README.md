@@ -31,14 +31,18 @@ The app runs in the background: no Dock icon, just a sun-in-a-viewfinder icon in
 | Arrow | Drag from where it points to where it comes from. Filled, tapered arrow. Two handles. |
 | Rectangle / Ellipse | Drag out a box. Four corner handles. Clicking the hollow middle doesn't select it. |
 | Spotlight | Like the rectangle, but everything outside it is darkened (33% black, from the original). Several spotlights cut several holes. Arrows, boxes and text stay bright on top. |
+| Highlight | Drag a box. The color is multiplied over the image like a marker, so text underneath stays readable. Click inside to select it. |
+| Pixelate | Drag a box over anything sensitive. S/M/L sets the block size (6/10/16pt). The saved or copied PNG only contains the blocks. |
+| Crop | Drag a frame, adjust it with the corner handles or by dragging inside, then press Return, double-click, or click **Crop** in the toolbar. Esc or **Cancel** drops it. Undo brings the full image back. The window shrinks to the new size. |
 | Text | Click and type. Bold Helvetica Neue, 20/28/43pt for S/M/L, with an outline (black on light colors, white plus a shadow on dark ones). Double-click to edit. Side handles set the wrap width. Esc or a click elsewhere finishes. |
 
 Common to all of them:
+- **Toolbar:** tools sit in the title bar. On the right, the color swatch opens a popover with presets and a custom picker, the three dots pick S/M/L, and the square toggles the shadow.
 - **Style:** color, size and shadow apply to new graphics and to the current selection.
 - **Remembered settings:** the tool and style carry over to the next capture.
 - **Editing:** everything can be undone and redone (⌘Z / ⇧⌘Z), and Delete removes the selection.
 
-Not ported yet (in `Tool`, hidden from the palette): line, spotlight circle, pen, pixelate, crop.
+Not ported yet (in `Tool`, hidden from the palette): line, spotlight circle, pen.
 
 Values carried over from the original binary:
 - **Shapes:** stroke `[2, 4, 8]`; default color sRGB `(1, 0.906, 0)` yellow.
@@ -59,9 +63,9 @@ Sunny/
   App/        AppDelegate (accessory app, programmatic main menu), DEBUG-only SelfTest
   Capture/    ScreenCapture (screencapture + clipboard), GlobalHotKeys (Carbon), StatusMenu
   Document/   Document (NSDocument: image + [Graphic] + undo, PNG save, copy), window + toast
-  Model/      Tool, Graphic (base), Shape, ShapeRectangle, ShapeCircle, OverlayRectangle, ArrowNormal, TextBox
+  Model/      Tool, Graphic (base), Shape, ShapeRectangle, ShapeCircle, OverlayRectangle, Highlight, Pixelate, CropRegion, ArrowNormal, TextBox
   Canvas/     CanvasView (drawing), CanvasViewController (mouse state machine, selection, text editing)
-  Chrome/     SwiftUI tool palette + CanvasSettings (persisted)
+  Chrome/     SwiftUI title-bar toolbar (ToolsBar, StyleBar) + CanvasSettings (persisted)
 ```
 
 ## Building a release

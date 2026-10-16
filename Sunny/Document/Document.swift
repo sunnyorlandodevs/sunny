@@ -8,11 +8,17 @@ final class Document: NSDocument {
     nonisolated static let pngTypeID = UTType.png.identifier
     static let blankCanvasSize = CGSize(width: 1024, height: 768)
 
-    private(set) var image: NSImage?
+    private(set) var image: NSImage? { didSet { pixelatedCache = [:] } }
     private(set) var graphics: [Graphic] = []
 
     /// Called after anything visible changes (edits, undo, redo).
     var onChange: (() -> Void)?
+
+    /// Called after the canvas changes size (crop, and undoing one).
+    var onCanvasResize: (() -> Void)?
+
+    /// Pixelated copies of the image, one per block size, for redaction boxes.
+    private var pixelatedCache: [CGFloat: CGImage] = [:]
 
     /// Asked to commit an in-progress edit (e.g. typing in a text box) before the
     /// document is flattened for saving or copying.
@@ -151,6 +157,12 @@ final class Document: NSDocument {
             context.fill(bounds)
         }
         let all = graphics + pending
+        // Redaction first, so highlights, spotlights and shapes sit on top of the blocks.
+        for box in all.compactMap({ $0 as? Pixelate }) {
+            if let pixelated = pixelatedImage(blockSize: box.blockSize) {
+                box.drawPixelation(from: pixelated, canvas: bounds, in: context)
+            }
+        }
         OverlayRectangle.drawDimming(for: all.compactMap { $0 as? OverlayRectangle },
                                      canvas: bounds, in: context)
         for graphic in graphics {
@@ -159,6 +171,63 @@ final class Document: NSDocument {
         for graphic in pending {
             graphic.drawContents(in: context, isBeingCreated: true)
         }
+    }
+
+    /// The whole image pixelated with `blockSize`-point blocks, at native resolution.
+    func pixelatedImage(blockSize: CGFloat) -> CGImage? {
+        if let cached = pixelatedCache[blockSize] { return cached }
+        guard let image, let cgImage = Self.cgImage(of: image) else { return nil }
+        let scale = CGFloat(cgImage.width) / canvasSize.width
+        let pixelated = Pixelate.pixelate(cgImage, blockPixels: (blockSize * scale).rounded())
+        pixelatedCache[blockSize] = pixelated
+        return pixelated
+    }
+
+    // MARK: Crop (undoable)
+
+    /// The canvas area a crop to `rect` would keep: clamped to the image and snapped
+    /// to whole pixels, in canvas points.
+    func cropRect(for rect: CGRect) -> CGRect? {
+        guard let image, let cgImage = Self.cgImage(of: image) else { return nil }
+        let scale = CGFloat(cgImage.width) / canvasSize.width
+        let clamped = rect.standardized.intersection(CGRect(origin: .zero, size: canvasSize))
+        guard !clamped.isNull else { return nil }
+        let pixels = CGRect(x: (clamped.minX * scale).rounded(), y: (clamped.minY * scale).rounded(),
+                            width: (clamped.width * scale).rounded(), height: (clamped.height * scale).rounded())
+        guard pixels.width >= 1, pixels.height >= 1 else { return nil }
+        return CGRect(x: pixels.minX / scale, y: pixels.minY / scale,
+                      width: pixels.width / scale, height: pixels.height / scale)
+    }
+
+    /// Crops the image to `rect` (canvas points) and moves the graphics with it.
+    /// Graphics that end up outside the new edges stay, so undo brings back the same picture.
+    func crop(to rect: CGRect) {
+        guard let image, let cgImage = Self.cgImage(of: image), let area = cropRect(for: rect) else { return }
+        let scale = CGFloat(cgImage.width) / canvasSize.width
+        let pixels = CGRect(x: area.minX * scale, y: area.minY * scale,
+                            width: area.width * scale, height: area.height * scale).integral
+        // CGImage cropping is in the image's top-left pixel space, same as the canvas.
+        guard let cropped = cgImage.cropping(to: pixels) else { return }
+        // A bitmap rep keeps the native pixels; `NSImage(cgImage:size:)` would report
+        // the screen's backing scale instead.
+        let rep = NSBitmapImageRep(cgImage: cropped)
+        rep.size = area.size
+        let newImage = NSImage(size: area.size)
+        newImage.addRepresentation(rep)
+        replaceImage(with: newImage, shiftingGraphicsBy: CGVector(dx: -area.minX, dy: -area.minY))
+        undoManager?.setActionName("Crop")
+    }
+
+    private func replaceImage(with newImage: NSImage, shiftingGraphicsBy shift: CGVector) {
+        let oldImage = image
+        image = newImage
+        for graphic in graphics { graphic.translate(by: shift) }
+        undoManager?.registerUndo(withTarget: self) { doc in
+            guard let oldImage else { return }
+            doc.replaceImage(with: oldImage, shiftingGraphicsBy: CGVector(dx: -shift.dx, dy: -shift.dy))
+        }
+        onCanvasResize?()
+        onChange?()
     }
 
     /// Flattened PNG at the image's native pixel resolution (2x for Retina screenshots).
@@ -197,6 +266,26 @@ final class Document: NSDocument {
     }
 
     // MARK: Image helpers
+
+    /// The image as a bitmap at its native pixel size.
+    private static func cgImage(of image: NSImage) -> CGImage? {
+        let pixels = pixelSize(of: image)
+        if let rep = image.representations.first(where: { $0.pixelsWide == Int(pixels.width) }) as? NSBitmapImageRep,
+           let cgImage = rep.cgImage {
+            return cgImage
+        }
+        let width = Int(pixels.width.rounded()), height = Int(pixels.height.rounded())
+        guard width > 0, height > 0,
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        image.draw(in: CGRect(x: 0, y: 0, width: width, height: height))
+        NSGraphicsContext.restoreGraphicsState()
+        return context.makeImage()
+    }
 
     private static func pixelSize(of image: NSImage) -> CGSize {
         let reps = image.representations

@@ -24,6 +24,7 @@ final class CanvasView: NSView {
         for graphic in controller.selection {
             graphic.drawHandles(in: context)
         }
+        controller.cropRegion?.drawOverlay(canvas: bounds, in: context)
         context.restoreGState()
     }
 
@@ -52,7 +53,12 @@ final class CanvasView: NSView {
 
     override func deleteBackward(_ sender: Any?) { controller?.deleteSelection() }
     override func deleteForward(_ sender: Any?) { controller?.deleteSelection() }
-    override func cancelOperation(_ sender: Any?) { controller?.selection = [] }
+    override func cancelOperation(_ sender: Any?) {
+        if controller?.cropRegion != nil { controller?.cancelCrop() } else { controller?.selection = [] }
+    }
+
+    /// Return applies a pending crop.
+    override func insertNewline(_ sender: Any?) { controller?.applyCrop() }
 }
 
 /// Keeps the canvas centered in the scroll view when it's smaller than the window.

@@ -27,6 +27,14 @@ enum SelfTest {
                 let failures = run(doc, outDir: outDir)
                 // Optional pause so an external `screencapture -l <window>` can grab the real window.
                 let hold = defaults.double(forKey: "SunnySelfTestHold")
+                // `-SunnySelfTestPose crop` leaves a crop frame up for the screenshot.
+                if defaults.string(forKey: "SunnySelfTestPose") == "crop",
+                   let wc = doc.windowControllers.first as? DocumentWindowController {
+                    wc.settings.tool = .crop
+                    wc.canvasController.mouseDown(at: CGPoint(x: 150, y: 120), extendingSelection: false)
+                    wc.canvasController.mouseDragged(to: CGPoint(x: 900, y: 600))
+                    wc.canvasController.mouseUp(at: CGPoint(x: 900, y: 600))
+                }
                 if let window = doc.windowControllers.first?.window { print("WINDOW \(window.windowNumber)") }
                 DispatchQueue.main.asyncAfter(deadline: .now() + hold) { finish(failures) }
             }
@@ -177,6 +185,8 @@ enum SelfTest {
         runMVPTools(doc, wc, step: step, check: check)
         runSpotlight(doc, wc, step: step, check: check)
         runCopyAndClose(doc, check: check)
+        runHighlightAndPixelate(doc, wc, step: step, check: check)
+        runCrop(doc, wc, step: step, check: check)
         canvas.selection = []
         snapshot(canvas.canvasView, to: outDir.appendingPathComponent("3-final-canvas.png"))
         snapshot(wc.window!.contentView!, to: outDir.appendingPathComponent("4-window.png"))
@@ -330,6 +340,108 @@ enum SelfTest {
         check(abs(pixel(after, inside) - pixel(before, inside)) < 0.01, "inside the spotlight is untouched")
         check(doc.graphics.firstIndex { $0 is OverlayRectangle }! < doc.graphics.firstIndex { $0 is ArrowNormal }!,
               "spotlight sits below arrows/shapes/text")
+    }
+
+    private static func color(_ png: Data, _ doc: Document, _ p: CGPoint) -> CodableColor {
+        let rep = NSBitmapImageRep(data: png)!
+        let scale = CGFloat(rep.pixelsWide) / doc.canvasSize.width
+        return CodableColor(rep.colorAt(x: Int(p.x * scale), y: Int(p.y * scale))!)
+    }
+
+    /// Highlight multiplies over the image; pixelate turns its box into flat blocks.
+    private static func runHighlightAndPixelate(_ doc: Document, _ wc: DocumentWindowController,
+                                                step: (() -> Void) -> Void, check: (Bool, String) -> Void) {
+        let canvas = wc.canvasController
+        canvas.selection = []
+        wc.settings.tool = .highlight
+        wc.settings.color = Graphic.defaultColor
+        step {
+            canvas.mouseDown(at: CGPoint(x: 60, y: 600), extendingSelection: false)
+            canvas.mouseDragged(to: CGPoint(x: 260, y: 640))
+            canvas.mouseUp(at: CGPoint(x: 260, y: 640))
+        }
+        let highlight = doc.graphics.first { $0 is Highlight }
+        check(highlight != nil, "drag creates a highlight")
+        check(doc.graphics.firstIndex { $0 is Highlight }! < doc.graphics.firstIndex { $0 is ArrowNormal }!,
+              "highlight sits below arrows/shapes/text")
+        canvas.mouseDown(at: CGPoint(x: 160, y: 620), extendingSelection: false)
+        canvas.mouseUp(at: CGPoint(x: 160, y: 620))
+        check(canvas.selection.first === highlight, "clicking inside a highlight selects it")
+
+        // Pixelate a 100pt box with 10pt blocks; blocks start on a 10pt grid from the top-left.
+        let before = doc.renderedPNG()!
+        canvas.selection = []
+        wc.settings.tool = .pixelate
+        wc.settings.size = 1
+        step {
+            canvas.mouseDown(at: CGPoint(x: 400, y: 600), extendingSelection: false)
+            canvas.mouseDragged(to: CGPoint(x: 500, y: 700))
+            canvas.mouseUp(at: CGPoint(x: 500, y: 700))
+        }
+        check(doc.graphics.contains { $0 is Pixelate }, "drag creates a pixelate box")
+        let after = doc.renderedPNG()!
+        var flat = true, changed = false
+        for bx in stride(from: 410.0, to: 490, by: 10) {
+            for by in stride(from: 610.0, to: 690, by: 10) {
+                let a = color(after, doc, CGPoint(x: bx + 1, y: by + 1))
+                let b = color(after, doc, CGPoint(x: bx + 8.5, y: by + 8.5))
+                if abs(a.red - b.red) + abs(a.green - b.green) + abs(a.blue - b.blue) > 0.02 { flat = false }
+                if color(before, doc, CGPoint(x: bx + 1, y: by + 1)) != a { changed = true }
+            }
+        }
+        check(flat, "each 10pt block inside the pixelate box is one flat color")
+        check(changed, "pixelate changes the pixels it covers")
+        let outside = CGPoint(x: 520, y: 650)
+        check(color(before, doc, outside) == color(after, doc, outside), "pixelate leaves the pixels outside alone")
+    }
+
+    /// Crop: frame, Esc cancels, Return/apply crops image and moves graphics; undo restores.
+    private static func runCrop(_ doc: Document, _ wc: DocumentWindowController,
+                                step: (() -> Void) -> Void, check: (Bool, String) -> Void) {
+        let canvas = wc.canvasController
+        let undo = doc.undoManager!
+        let originalSize = doc.canvasSize
+        guard let arrow = doc.graphics.first(where: { $0 is ArrowNormal }) else {
+            check(false, "crop test needs an arrow")
+            return
+        }
+        let arrowTip = arrow.handles[0]
+        let toolBefore = wc.settings.tool
+        let graphicCount = doc.graphics.count
+        let pixelScale = CGFloat(NSBitmapImageRep(data: doc.renderedPNG()!)!.pixelsWide) / originalSize.width
+
+        wc.settings.tool = .crop
+        func dragFrame() {
+            canvas.mouseDown(at: CGPoint(x: 50, y: 40), extendingSelection: false)
+            canvas.mouseDragged(to: CGPoint(x: 450, y: 340))
+            canvas.mouseUp(at: CGPoint(x: 450, y: 340))
+        }
+        dragFrame()
+        check(canvas.cropRegion != nil && wc.settings.isCropPending, "crop tool drags out a frame and shows Crop/Cancel")
+        check(doc.graphics.count == graphicCount, "crop frame isn't added to the document")
+        canvas.cancelCrop()
+        check(canvas.cropRegion == nil && !wc.settings.isCropPending, "Esc cancels the crop frame")
+
+        dragFrame()
+        // Grab the bottom-right handle and pull it in by 50pt.
+        canvas.mouseDown(at: CGPoint(x: 450, y: 340), extendingSelection: false)
+        canvas.mouseDragged(to: CGPoint(x: 400, y: 290))
+        canvas.mouseUp(at: CGPoint(x: 400, y: 290))
+        step { canvas.applyCrop() }
+        check(doc.canvasSize == CGSize(width: 350, height: 250), "crop resizes the canvas (\(doc.canvasSize))")
+        check(canvas.canvasView.frame.size == doc.canvasSize, "canvas view follows the new size")
+        check(arrow.handles[0] == CGPoint(x: arrowTip.x - 50, y: arrowTip.y - 40), "graphics move with the crop")
+        check(wc.settings.tool != .crop, "tool goes back to drawing after a crop")
+        check(abs((wc.window?.contentLayoutRect.width ?? 0) - max(350, wc.window!.contentMinSize.width)) < 1,
+              "window shrinks to the cropped image")
+        let croppedPixels = NSBitmapImageRep(data: doc.renderedPNG()!)?.pixelsWide ?? 0
+        check(croppedPixels == Int((350 * pixelScale).rounded()), "cropped PNG keeps native resolution (\(croppedPixels)px)")
+        undo.undo()
+        check(doc.canvasSize == originalSize && arrow.handles[0] == arrowTip, "undo restores the full image and positions")
+        undo.redo()
+        check(doc.canvasSize == CGSize(width: 350, height: 250), "redo crops again")
+        undo.undo()
+        wc.settings.tool = toolBefore
     }
 
     private static func snapshot(_ view: NSView, to url: URL) {

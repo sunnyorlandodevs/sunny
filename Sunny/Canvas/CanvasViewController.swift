@@ -19,11 +19,24 @@ final class CanvasViewController: NSViewController {
     /// The graphic being dragged out with the current tool, not yet in the document.
     private(set) var creatingGraphic: Graphic?
 
+    /// The crop frame waiting to be applied (Return / double-click / the toolbar button).
+    private(set) var cropRegion: CropRegion? {
+        didSet {
+            settings.isCropPending = cropRegion != nil
+            canvasView.needsDisplay = true
+        }
+    }
+
+    /// Asked to resize the window after the canvas changes size (crop, undo).
+    var onCanvasResize: (() -> Void)?
+
     private enum Drag {
         case none
         case creating(Graphic, handle: Int)
         case resizing(Graphic, handle: Int, before: Graphic.Record)
         case moving([(Graphic, Graphic.Record)])
+        /// Dragging out, resizing (`handle`) or moving (`handle` nil) the crop frame.
+        case cropping(handle: Int?)
     }
 
     private var drag = Drag.none
@@ -69,6 +82,22 @@ final class CanvasViewController: NSViewController {
         document?.onChange = { [weak self] in self?.documentDidChange() }
         document?.commitPendingEdits = { [weak self] in self?.endEditing() }
         settings.onStyleChange = { [weak self] style in self?.applyStyleToSelection(style) }
+        settings.onToolChange = { [weak self] in self?.toolDidChange() }
+        settings.onCropCommand = { [weak self] apply in apply ? self?.applyCrop() : self?.cancelCrop() }
+        document?.onCanvasResize = { [weak self] in self?.canvasDidResize() }
+    }
+
+    private func toolDidChange() {
+        endEditing()
+        if settings.tool != .crop { cropRegion = nil }
+        if settings.tool == .crop { selection = [] }
+    }
+
+    private func canvasDidResize() {
+        guard let document else { return }
+        cropRegion = nil
+        canvasView.frame = CGRect(origin: .zero, size: document.canvasSize)
+        onCanvasResize?()
     }
 
     private func documentDidChange() {
@@ -90,6 +119,11 @@ final class CanvasViewController: NSViewController {
         }
         view.window?.makeFirstResponder(canvasView)
         lastPoint = point
+
+        if settings.tool == .crop {
+            cropMouseDown(at: point, clickCount: clickCount)
+            return
+        }
 
         // 1. A handle of something already selected → resize it.
         for graphic in selection.reversed() {
@@ -148,6 +182,13 @@ final class CanvasViewController: NSViewController {
                              before: before)
         case let .moving(items):
             for (graphic, _) in items { graphic.translate(by: delta) }
+        case let .cropping(handle):
+            guard let cropRegion else { return }
+            if let handle {
+                drag = .cropping(handle: cropRegion.resize(movingHandle: handle, by: delta))
+            } else {
+                cropRegion.translate(by: delta)
+            }
         }
         canvasView.needsDisplay = true
     }
@@ -174,7 +215,50 @@ final class CanvasViewController: NSViewController {
             for (graphic, before) in items {
                 document.graphic(graphic, didChangeFrom: before, actionName: "Move")
             }
+        case .cropping:
+            // A click without a drag leaves no frame behind.
+            if let cropRegion, !cropRegion.isValidAfterCreation { self.cropRegion = nil }
         }
+    }
+
+    // MARK: Crop
+
+    private func cropMouseDown(at point: CGPoint, clickCount: Int) {
+        if let cropRegion {
+            if let handle = cropRegion.handle(under: point) {
+                drag = .cropping(handle: handle)
+                return
+            }
+            if cropRegion.isContentsUnderPoint(point) {
+                if clickCount == 2 {
+                    drag = .none
+                    applyCrop()
+                } else {
+                    drag = .cropping(handle: nil)
+                }
+                return
+            }
+        }
+        let region = CropRegion(at: point, color: .white, size: 0, hasShadow: false)
+        cropRegion = region
+        drag = .cropping(handle: CropRegion.creationSizingHandle)
+    }
+
+    /// Crops the image to the frame. One undo step; the tool goes back to the last
+    /// drawing tool so the next drag annotates instead of cropping again.
+    func applyCrop() {
+        guard let document, let cropRegion else { return }
+        guard document.cropRect(for: cropRegion.rect) != nil else {
+            NSSound.beep()
+            return
+        }
+        self.cropRegion = nil
+        document.crop(to: cropRegion.rect)
+        settings.tool = settings.lastDrawingTool
+    }
+
+    func cancelCrop() {
+        cropRegion = nil
     }
 
     // MARK: Text editing
@@ -266,6 +350,7 @@ final class CanvasViewController: NSViewController {
     }
 
     @IBAction func delete(_ sender: Any?) { deleteSelection() }
+    @IBAction func applyCrop(_ sender: Any?) { applyCrop() }
 
     override func selectAll(_ sender: Any?) {
         selection = document?.graphics ?? []
@@ -300,6 +385,7 @@ extension CanvasViewController: NSMenuItemValidation {
         switch item.action {
         case #selector(delete(_:)): !selection.isEmpty
         case #selector(selectAll(_:)): !(document?.graphics.isEmpty ?? true)
+        case #selector(applyCrop(_:)): cropRegion != nil
         default: true
         }
     }

@@ -13,6 +13,8 @@ enum Tool: Int, CaseIterable, Codable, Identifiable {
     case text = 7
     case pixelate = 8
     case crop = 9
+    /// Not in the original: a marker-style box.
+    case highlight = 10
 
     var id: Int { rawValue }
 
@@ -28,6 +30,7 @@ enum Tool: Int, CaseIterable, Codable, Identifiable {
         case .text: "Text"
         case .pixelate: "Pixelate"
         case .crop: "Crop"
+        case .highlight: "Highlight"
         }
     }
 
@@ -41,8 +44,9 @@ enum Tool: Int, CaseIterable, Codable, Identifiable {
         case .shapeCircle: "circle"
         case .pen: "pencil.tip"
         case .text: "textformat"
-        case .pixelate: "squareshape.split.3x3"
+        case .pixelate: "checkerboard.rectangle"
         case .crop: "crop"
+        case .highlight: "highlighter"
         }
     }
 
@@ -54,13 +58,27 @@ enum Tool: Int, CaseIterable, Codable, Identifiable {
         case .shapeRectangle: ShapeRectangle.self
         case .shapeCircle: ShapeCircle.self
         case .text: TextBox.self
+        case .pixelate: Pixelate.self
+        case .highlight: Highlight.self
         default: nil
         }
     }
 
-    var isAvailable: Bool { graphicClass != nil }
+    /// Crop isn't a graphic: the canvas controller handles it directly.
+    var isAvailable: Bool { graphicClass != nil || self == .crop }
 
-    /// Palette order (not tool-id order): arrow, the box tools, then text.
-    static let paletteOrder: [Tool] = [.arrowNormal, .shapeRectangle, .shapeCircle, .overlayRectangle, .text,
-                                       .arrowLine, .overlayCircle, .pen, .pixelate, .crop]
+    /// What the S/M/L control means for this tool.
+    var sizeLabel: String {
+        switch self {
+        case .text: "Text size"
+        case .pixelate: "Block size"
+        case .highlight, .crop: ""
+        default: "Line width"
+        }
+    }
+
+    /// Palette order (not tool-id order): drawing tools, then the image tools.
+    static let paletteOrder: [Tool] = [.arrowNormal, .shapeRectangle, .shapeCircle, .text, .highlight,
+                                       .overlayRectangle, .pixelate, .crop,
+                                       .arrowLine, .overlayCircle, .pen]
 }
